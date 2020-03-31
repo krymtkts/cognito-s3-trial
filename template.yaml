@@ -2,6 +2,16 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: "Sample for Authenticate access to S3 with Cognito."
 
 Resources:
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Join:
+          - ""
+          - - Ref: AWS::StackName
+            - "-"
+            - bucket
+      AccessControl: Private
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
@@ -97,6 +107,35 @@ Resources:
               - cognito-identity:*
             Resource:
               - "*"
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - Fn::GetAtt:
+                  - OutputBucket
+                  - Arn
+            Condition:
+              StringLike:
+                "s3:prefix":
+                  - "test/"
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - OutputBucket
+                        - Arn
+                    - "/test/"
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - OutputBucket
+                        - Arn
+                    - "/test/*"
   AuthenticatedRole:
     Type: AWS::IAM::Role
     Properties:
@@ -130,6 +169,9 @@ Resources:
             - AuthenticatedRole
             - Arn
 Outputs:
+  OutputBucket:
+    Value:
+      Ref: OutputBucket
   UserPool:
     Value:
       Ref: UserPool

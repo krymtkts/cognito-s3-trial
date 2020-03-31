@@ -13,6 +13,10 @@ $outputs = aws cloudformation describe-stacks --output json --stack-name $StackN
 
 foreach ($output in $outputs) {
     switch ($output.OutputKey) {
+        'OutputBucket' {
+            $bucketName = $output.OutputValue
+            break
+        }
         'UserPool' {
             $userPoolId = $output.OutputValue
             break
@@ -105,3 +109,22 @@ $credential = aws cognito-identity get-credentials-for-identity `
 Write-Verbose $credential
 Write-Output $credential.Credentials
 
+$env:AWS_ACCESS_KEY_ID = $credential.Credentials.AccessKeyId
+$env:AWS_SECRET_ACCESS_KEY = $credential.Credentials.SecretKey
+$env:AWS_SECURITY_TOKEN = $credential.Credentials.SessionToken
+
+Write-Verbose @'
+==================== 3. test access to S3. ====================
+'@
+
+# success
+aws s3 cp ./README.md s3://$bucketName/test/ --region ap-northeast-1 | Write-Verbose
+
+# access denied
+aws s3 ls s3://$bucketName/ --region ap-northeast-1 | Write-Verbose
+
+# success
+aws s3 ls s3://$bucketName/test/ --region ap-northeast-1 | Write-Verbose
+
+# success
+aws s3 rm s3://$bucketName/test/README.md --region ap-northeast-1 | Write-Verbose
