@@ -4,6 +4,8 @@ param (
     [Parameter()][string]$Account,
     [Parameter()][string]$DefaultPassword,
     [Parameter()][string]$Password,
+    [Parameter()][string]$GroupName,
+    [Parameter()][string]$VendorName,
     [Parameter()][string]$StackName,
     [Parameter()][string]$AwsProfile
 )
@@ -47,6 +49,13 @@ aws cognito-idp admin-create-user `
     --temporary-password $DefaultPassword `
     --message-action SUPPRESS | Write-Verbose
 
+aws cognito-idp admin-add-user-to-group `
+    --profile $AwsProfile `
+    --region ap-northeast-1 `
+    --user-pool-id $userPoolId `
+    --username $Account `
+    --group-name $GroupName
+
 # initiation.
 $res = aws cognito-idp initiate-auth `
     --region ap-northeast-1 `
@@ -89,6 +98,15 @@ $tokens = aws cognito-idp initiate-auth `
     --output json | ConvertFrom-Json
 Write-Verbose $tokens
 
+$a = $tokens.AuthenticationResult.IdToken.split('.')[1]
+if (($a.Length % 4) -gt 0) {
+    $a = $a.PadRight($a.length + (4 - $a.Length % 4), '=')
+}
+Write-Verbose $tokens.AuthenticationResult.IdToken.split('.')[1]
+Write-Verbose $a
+$jwt = [System.Text.Encoding]::Default.GetString([System.Convert]::FromBase64String("$a"))
+Write-Verbose $jwt
+
 $logins = "cognito-idp.ap-northeast-1.amazonaws.com/$userPoolId=$($tokens.AuthenticationResult.IdToken)"
 Write-Verbose $logins
 $identity = aws cognito-identity get-id `
@@ -100,7 +118,7 @@ $identity = aws cognito-identity get-id `
 Write-Verbose $identity
 
 Write-Verbose 'Wait for identity generation...'
-Start-Sleep -Seconds 60
+Start-Sleep -Seconds 30
 $credential = aws cognito-identity get-credentials-for-identity `
     --region ap-northeast-1 `
     --identity-id "$($identity.IdentityId)" `
@@ -117,14 +135,16 @@ Write-Verbose @'
 ==================== 3. test access to S3. ====================
 '@
 
+Write-Host s3://$bucketName/$VendorName/
+
 # success
-aws s3 cp ./README.md s3://$bucketName/test/ --region ap-northeast-1 | Write-Verbose
+aws s3 cp ./README.md s3://$bucketName/$VendorName/ --region ap-northeast-1 | Write-Verbose
 
 # access denied
 aws s3 ls s3://$bucketName/ --region ap-northeast-1 | Write-Verbose
 
 # success
-aws s3 ls s3://$bucketName/test/ --region ap-northeast-1 | Write-Verbose
+aws s3 ls s3://$bucketName/$VendorName/ --region ap-northeast-1 | Write-Verbose
 
 # success
-aws s3 rm s3://$bucketName/test/README.md --region ap-northeast-1 | Write-Verbose
+aws s3 rm s3://$bucketName/$VendorName/README.md --region ap-northeast-1 | Write-Verbose

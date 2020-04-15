@@ -1,25 +1,26 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Sample for Authenticate access to S3 with Cognito."
+Description: "Template to Authenticate access to S3 with Cognito."
 
 Resources:
   OutputBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName:
-        Fn::Join:
-          - ""
-          - - Ref: AWS::StackName
-            - "-"
-            - bucket
+      BucketName: !Sub "${AWS::StackName}-bucket"
       AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      LifecycleConfiguration:
+        Rules:
+          - Id: LifeCycleRule
+            Status: Enabled
+            ExpirationInDays: "7"
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName:
-        Fn::Join:
-          - ""
-          - - Ref: AWS::StackName
-            - Users
+      UserPoolName: !Sub "${AWS::StackName}Users"
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
       Policies:
@@ -29,14 +30,12 @@ Resources:
           RequireNumbers: true
           RequireSymbols: true
           RequireUppercase: true
+      UserPoolAddOns:
+        AdvancedSecurityMode: AUDIT
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName:
-        Fn::Join:
-          - ""
-          - - Ref: AWS::StackName
-            - Users-client
+      ClientName: !Sub "${AWS::StackName}UsersClient"
       GenerateSecret: false # VERY IMPORTANT! MSUT BE FALSE!
       ExplicitAuthFlows:
         - ALLOW_ADMIN_USER_PASSWORD_AUTH
@@ -49,21 +48,12 @@ Resources:
     Type: AWS::Cognito::IdentityPool
     Properties:
       AllowUnauthenticatedIdentities: false
-      IdentityPoolName:
-        Fn::Join:
-          - ""
-          - - Ref: AWS::StackName
-            - Identities
+      IdentityPoolName: !Sub "${AWS::StackName}Identities"
       CognitoIdentityProviders:
         - ClientId:
             Ref: UserPoolClient
-          ProviderName:
-            Fn::Join:
-              - ""
-              - - cognito-idp.
-                - Ref: AWS::Region
-                - .amazonaws.com/
-                - Ref: UserPool
+          ProviderName: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+          ServerSideTokenCheck: true
   UnauthenticatedPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -107,35 +97,6 @@ Resources:
               - cognito-identity:*
             Resource:
               - "*"
-          - Effect: Allow
-            Action:
-              - s3:ListBucket
-            Resource:
-              - Fn::GetAtt:
-                  - OutputBucket
-                  - Arn
-            Condition:
-              StringLike:
-                "s3:prefix":
-                  - "test/"
-          - Effect: Allow
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-            Resource:
-              - Fn::Join:
-                  - ""
-                  - - Fn::GetAtt:
-                        - OutputBucket
-                        - Arn
-                    - "/test/"
-              - Fn::Join:
-                  - ""
-                  - - Fn::GetAtt:
-                        - OutputBucket
-                        - Arn
-                    - "/test/*"
   AuthenticatedRole:
     Type: AWS::IAM::Role
     Properties:
@@ -168,6 +129,12 @@ Resources:
           Fn::GetAtt:
             - AuthenticatedRole
             - Arn
+      RoleMappings:
+        cognitoProvider:
+          IdentityProvider: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}:${UserPoolClient}"
+          Type: Token
+          AmbiguousRoleResolution: AuthenticatedRole
+
 Outputs:
   OutputBucket:
     Value:

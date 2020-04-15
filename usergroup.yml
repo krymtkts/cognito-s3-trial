@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Cognito user group template."
+
+Parameters:
+  VendorName:
+    Description: the name of group that assigned specific vendor.
+    Type: String
+    MinLength: "3"
+    MaxLength: "10"
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]+"
+    ConstraintDescription: Alphanumeric, must start with alphabet
+  CognitoUserPoolId:
+    Description: id of cognito user pool.
+    Type: String
+    MinLength: "1"
+    MaxLength: "55"
+    AllowedPattern: "[a-zA-Z][0-9a-zA-Z-_]+"
+    ConstraintDescription: Alphanumeric, must start with alphabet
+  CognitoIdentityPool:
+    Description: id of cognito identity pool.
+    Type: String
+    MinLength: "1"
+    MaxLength: "55"
+    AllowedPattern: "[a-z][0-9a-z:-]+"
+    ConstraintDescription: Alphanumeric, must start with alphabet
+  OutputBucketName:
+    Description: name of ebis rawdata provision bucket.
+    Type: String
+    MinLength: "1"
+    MaxLength: "55"
+    AllowedPattern: "[a-z][0-9a-z-]+"
+    ConstraintDescription: Alphanumeric, must start with alphabet
+
+Resources:
+  UserGroupPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${OutputBucketName}"
+            Condition:
+              StringLike:
+                "s3:prefix": !Sub "${VendorName}/"
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub "arn:aws:s3:::${OutputBucketName}/${VendorName}/"
+              - !Sub "arn:aws:s3:::${OutputBucketName}/${VendorName}/*"
+  UserGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud":
+                  Ref: CognitoIdentityPool
+      ManagedPolicyArns:
+        - Ref: UserGroupPolicy
+    DependsOn:
+      - UserGroupPolicy
+  UserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: !Sub "${VendorName}-group"
+      RoleArn:
+        Fn::GetAtt:
+          - UserGroupRole
+          - Arn
+      UserPoolId: !Ref CognitoUserPoolId
+      Precedence: 0
+    DependsOn:
+      - UserGroupRole
+  # don't use below resources because there is no way to get auto generated temporary password from CFn stack.
+  # please create user manually.
+  # Type: AWS::Cognito::UserPoolUser
+  # Type: AWS::Cognito::UserPoolUserToGroupAttachment
+
+Outputs:
+  UserGroupRole:
+    Value:
+      Ref: UserGroupRole
+  UserGroup:
+    Value:
+      Ref: UserGroup
